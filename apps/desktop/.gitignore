@@ -1,0 +1,13 @@
+# Node/npm specific to this app
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# App-specific build outputs
+.turbo/
+
+# Editor directories and files (local overrides)
+.vscode/*
+!.vscode/extensions.json
+.idea/
