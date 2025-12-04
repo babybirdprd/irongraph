@@ -10,7 +10,8 @@ pub fn run() {
             llm_gateway::commands::send_chat,
             workspace_manager::commands::list_files,
             workspace_manager::commands::read_file,
-            workspace_manager::commands::write_file
+            workspace_manager::commands::write_file,
+            terminal_manager::commands::run_command
         ]);
 
     #[cfg(debug_assertions)] // Only export TS bindings in dev mode
@@ -21,7 +22,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(DbPool::new()) // Manage the state
-        .manage(workspace_manager::WorkspaceState(std::sync::Mutex::new(std::env::current_dir().expect("Failed to get current directory"))))
+        .manage(common::WorkspaceState(std::sync::Mutex::new(std::env::current_dir().expect("Failed to get current directory"))))
         .invoke_handler(builder.invoke_handler()) // Connect Specta to Tauri
         .setup(move |app| {
             builder.mount_events(app);
@@ -43,7 +44,8 @@ mod tests {
                 llm_gateway::commands::send_chat,
                 workspace_manager::commands::list_files,
                 workspace_manager::commands::read_file,
-                workspace_manager::commands::write_file
+                workspace_manager::commands::write_file,
+                terminal_manager::commands::run_command
             ]);
 
         // Path relative to Cargo.toml of the crate running the test

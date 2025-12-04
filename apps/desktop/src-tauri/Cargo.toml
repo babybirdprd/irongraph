@@ -29,3 +29,5 @@ feature_profile = { path = "../../../crates/feature_profile" }
 shared_db = { path = "../../../crates/shared_db" }
 llm_gateway = { path = "../../../crates/llm_gateway" }
 workspace_manager = { path = "../../../crates/workspace_manager" }
+terminal_manager = { path = "../../../crates/terminal_manager" }
+common = { path = "../../../crates/common" }
