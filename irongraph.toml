@@ -8,10 +8,10 @@ dependencies = ["shared_db"]
 [[node]]
 id = "llm_gateway"
 type = "backend_crate"
-description = "Handles HTTP connections to OpenAI-compatible LLM providers."
-inputs = ["LLMRequest { system_prompt, user_message, config }"]
+description = "Handles HTTP connections and parses Pure XML tool protocols."
+inputs = ["LLMRequest { messages, config }"]
 outputs = ["Result<LLMResponse, GatewayError>"]
-dependencies = ["reqwest", "serde", "specta"]
+dependencies = ["reqwest", "serde", "specta", "quick-xml"]
 
 [[node]]
 id = "workspace_manager"

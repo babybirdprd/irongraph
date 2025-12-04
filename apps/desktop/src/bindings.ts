@@ -62,8 +62,9 @@ export type FileEntry = { path: string; name: string; is_dir: boolean; children:
 export type FsError = { Io: string } | "SecurityViolation" | "InvalidPath"
 export type LLMConfig = { api_key: string; base_url: string; model: string; temperature: number }
 export type LLMRequest = { messages: Message[]; config: LLMConfig }
-export type LLMResponse = { content: string; usage: Partial<{ [key in string]: number }> | null }
+export type LLMResponse = { role: string; content: string; tool_calls: ToolCall[] | null; usage: Partial<{ [key in string]: number }> | null }
 export type Message = { role: string; content: string }
+export type ToolCall = { name: string; arguments: Partial<{ [key in string]: string }> }
 export type UpdateProfileReq = { name: string; bio: string }
 export type UserProfile = { id: number; name: string; bio: string }
 
