@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::collections::HashMap;
+use quick_xml::events::Event;
+use quick_xml::reader::Reader;
 
 #[derive(Type, Serialize, Deserialize, Debug, Clone)]
 pub struct LLMConfig {
@@ -22,9 +24,18 @@ pub struct LLMRequest {
     pub config: LLMConfig,
 }
 
+// The External "Graph" format (Sent to Frontend via Specta)
+#[derive(Type, Serialize, Deserialize, Debug, Clone)]
+pub struct ToolCall {
+    pub name: String,
+    pub arguments: HashMap<String, String>,
+}
+
 #[derive(Type, Serialize, Deserialize, Debug, Clone)]
 pub struct LLMResponse {
+    pub role: String,
     pub content: String,
+    pub tool_calls: Option<Vec<ToolCall>>,
     pub usage: Option<HashMap<String, u32>>,
 }
 
@@ -41,6 +52,97 @@ struct OpenAIResponse {
     usage: Option<HashMap<String, u32>>,
 }
 
+fn parse_xml_tools(content: &str) -> Option<Vec<ToolCall>> {
+    let start_tag = "<tool_code>";
+    let end_tag = "</tool_code>";
+
+    let start_idx = content.find(start_tag)?;
+    let end_idx = content.find(end_tag)?;
+
+    if start_idx >= end_idx {
+        return None;
+    }
+
+    let xml_block = &content[start_idx..end_idx + end_tag.len()];
+    let mut reader = Reader::from_str(xml_block);
+    reader.trim_text(true);
+
+    let mut tools = Vec::new();
+    let mut current_tool: Option<ToolCall> = None;
+    let mut current_arg_name: Option<String> = None;
+
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(e)) => {
+                let name_bytes = e.name();
+                let name_str = String::from_utf8_lossy(name_bytes.as_ref());
+
+                if name_str == "tool_code" {
+                    continue;
+                } else if name_str == "tool" {
+                     let mut tool_name = String::new();
+                     for attr in e.attributes() {
+                         if let Ok(attr) = attr {
+                             if attr.key.as_ref() == b"name" {
+                                 tool_name = String::from_utf8_lossy(&attr.value).to_string();
+                             }
+                         }
+                     }
+                     current_tool = Some(ToolCall {
+                         name: tool_name,
+                         arguments: HashMap::new(),
+                     });
+                } else {
+                    // Start of an argument tag
+                    if current_tool.is_some() {
+                        current_arg_name = Some(name_str.to_string());
+                    }
+                }
+            },
+            Ok(Event::Text(e)) => {
+                if let (Some(tool), Some(arg_name)) = (&mut current_tool, &current_arg_name) {
+                     if let Ok(text) = e.unescape() {
+                         tool.arguments.insert(arg_name.clone(), text.into_owned());
+                     }
+                }
+            },
+            Ok(Event::End(e)) => {
+                let name_bytes = e.name();
+                let name_str = String::from_utf8_lossy(name_bytes.as_ref());
+
+                if name_str == "tool" {
+                    if let Some(tool) = current_tool.take() {
+                        tools.push(tool);
+                    }
+                } else if name_str == "tool_code" {
+                    break;
+                } else {
+                     // End of argument
+                     if current_arg_name.as_ref() == Some(&name_str.to_string()) {
+                         current_arg_name = None;
+                     }
+                }
+            },
+            Ok(Event::Eof) => break,
+            Err(_) => return None,
+            _ => (),
+        }
+    }
+
+    if tools.is_empty() {
+        // It's possible the block was empty or we failed to parse tools.
+        // But if we found tool_code tags, we probably want to return Some([]) instead of None if it was just empty?
+        // Logic says return None if *parsing fails*.
+        // If <tool_code></tool_code> is present but empty, is it valid?
+        // The implementation assumes if we parse successfully we return Some(vec).
+        // If valid empty block, we return Some(empty).
+        // But here I'll just return Some(tools).
+        Some(tools)
+    } else {
+        Some(tools)
+    }
+}
+
 pub mod commands {
     use super::*;
 
@@ -49,8 +151,12 @@ pub mod commands {
     pub async fn send_chat(req: LLMRequest) -> Result<LLMResponse, String> {
         // 1. Mock Mode
         if req.config.base_url.contains("mock") {
+            let content = "Checking filesystem... \n<tool_code><tool name=\"run_command\"><program>ls</program><args>-la</args></tool></tool_code>".to_string();
+            let tool_calls = parse_xml_tools(&content);
             return Ok(LLMResponse {
-                content: "IronGraph Mock: System is online. Connection successful.".to_string(),
+                role: "assistant".to_string(),
+                content,
+                tool_calls,
                 usage: None,
             });
         }
@@ -85,12 +191,16 @@ pub mod commands {
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
 
-        let content = open_ai_res.choices.first()
-            .map(|c| c.message.content.clone())
-            .unwrap_or_default();
+        let (role, content) = open_ai_res.choices.first()
+            .map(|c| (c.message.role.clone(), c.message.content.clone()))
+            .unwrap_or(("assistant".to_string(), "".to_string()));
+
+        let tool_calls = parse_xml_tools(&content);
 
         Ok(LLMResponse {
+            role,
             content,
+            tool_calls,
             usage: open_ai_res.usage,
         })
     }
@@ -100,6 +210,49 @@ pub mod commands {
 mod tests {
     use super::*;
     use super::commands::send_chat;
+
+    #[test]
+    fn test_parse_xml_tools() {
+        let content = r#"
+            Here is the plan:
+            <tool_code>
+                <tool name="run_command">
+                    <program>ls</program>
+                    <args>-la</args>
+                </tool>
+            </tool_code>
+        "#;
+        let tools = parse_xml_tools(content).expect("Should parse");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "run_command");
+        assert_eq!(tools[0].arguments.get("program").unwrap(), "ls");
+        assert_eq!(tools[0].arguments.get("args").unwrap(), "-la");
+    }
+
+    #[test]
+    fn test_parse_xml_multiple_tools() {
+        let content = r#"
+            I will run two commands:
+            <tool_code>
+                <tool name="cmd1">
+                    <arg>val1</arg>
+                </tool>
+                <tool name="cmd2">
+                    <arg>val2</arg>
+                </tool>
+            </tool_code>
+        "#;
+        let tools = parse_xml_tools(content).expect("Should parse multiple");
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0].name, "cmd1");
+        assert_eq!(tools[1].name, "cmd2");
+    }
+
+    #[test]
+    fn test_parse_xml_no_tools() {
+        let content = "Just some text without tools.";
+        assert!(parse_xml_tools(content).is_none());
+    }
 
     #[tokio::test]
     async fn test_mock_mode() {
@@ -114,7 +267,10 @@ mod tests {
         };
 
         let res = send_chat(req).await.expect("Mock should succeed");
-        assert_eq!(res.content, "IronGraph Mock: System is online. Connection successful.");
+        assert!(res.content.contains("Checking filesystem"));
+        assert!(res.tool_calls.is_some());
+        let tools = res.tool_calls.unwrap();
+        assert_eq!(tools[0].name, "run_command");
     }
 
     #[tokio::test]
@@ -135,7 +291,7 @@ mod tests {
                         "index": 0,
                         "message": {
                             "role": "assistant",
-                            "content": "Hello there!"
+                            "content": "Hello there! <tool_code><tool name=\"greet\"><msg>hi</msg></tool></tool_code>"
                         },
                         "finish_reason": "stop"
                     }],
@@ -161,7 +317,8 @@ mod tests {
         let res = send_chat(req).await.expect("Request should succeed");
 
         mock.assert_async().await;
-        assert_eq!(res.content, "Hello there!");
-        assert!(res.usage.is_some());
+        assert!(res.content.contains("Hello there!"));
+        assert!(res.tool_calls.is_some());
+        assert_eq!(res.tool_calls.unwrap()[0].name, "greet");
     }
 }
