@@ -28,3 +28,4 @@ specta-typescript = "0.0.9"
 feature_profile = { path = "../../../crates/feature_profile" }
 shared_db = { path = "../../../crates/shared_db" }
 llm_gateway = { path = "../../../crates/llm_gateway" }
+workspace_manager = { path = "../../../crates/workspace_manager" }
