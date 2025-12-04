@@ -44,6 +44,14 @@ async writeFile(filePath: string, content: string) : Promise<Result<FileContent,
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async runCommand(program: string, args: string[]) : Promise<Result<CommandOutput, ShellError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("run_command", { program, args }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -57,6 +65,7 @@ async writeFile(filePath: string, content: string) : Promise<Result<FileContent,
 
 /** user-defined types **/
 
+export type CommandOutput = { stdout: string; stderr: string; exit_code: number }
 export type FileContent = { path: string; content: string }
 export type FileEntry = { path: string; name: string; is_dir: boolean; children: FileEntry[] | null }
 export type FsError = { Io: string } | "SecurityViolation" | "InvalidPath"
@@ -64,6 +73,7 @@ export type LLMConfig = { api_key: string; base_url: string; model: string; temp
 export type LLMRequest = { messages: Message[]; config: LLMConfig }
 export type LLMResponse = { role: string; content: string; tool_calls: ToolCall[] | null; usage: Partial<{ [key in string]: number }> | null }
 export type Message = { role: string; content: string }
+export type ShellError = { Io: string } | { NotFound: string }
 export type ToolCall = { name: string; arguments: Partial<{ [key in string]: string }> }
 export type UpdateProfileReq = { name: string; bio: string }
 export type UserProfile = { id: number; name: string; bio: string }

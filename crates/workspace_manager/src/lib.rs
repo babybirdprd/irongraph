@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use thiserror::Error;
+pub use common::WorkspaceState;
 
 #[derive(Error, Debug, Serialize, Type)]
 pub enum FsError {
@@ -34,8 +34,6 @@ pub struct FileContent {
     pub path: String,
     pub content: String,
 }
-
-pub struct WorkspaceState(pub Mutex<PathBuf>);
 
 // Security Helper
 // Returns the absolute path if valid.

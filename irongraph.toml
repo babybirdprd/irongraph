@@ -20,3 +20,11 @@ description = "Handles File System reading and writing with sandbox enforcement.
 inputs = ["FileRequest { path }", "WriteRequest { path, content }"]
 outputs = ["Result<Vec<FileEntry>, FsError>", "Result<FileContent, FsError>"]
 dependencies = ["walkdir", "specta"]
+
+[[node]]
+id = "terminal_manager"
+type = "backend_crate"
+description = "Executes shell commands within the workspace scope."
+inputs = ["CommandRequest { program, args, cwd }"]
+outputs = ["Result<CommandOutput, ShellError>"]
+dependencies = ["tokio", "specta"]
