@@ -20,6 +20,30 @@ async sendChat(req: LLMRequest) : Promise<Result<LLMResponse, string>> {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async listFiles(dirPath: string | null) : Promise<Result<FileEntry[], FsError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("list_files", { dirPath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async readFile(filePath: string) : Promise<Result<FileContent, FsError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("read_file", { filePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async writeFile(filePath: string, content: string) : Promise<Result<FileContent, FsError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("write_file", { filePath, content }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -33,6 +57,9 @@ async sendChat(req: LLMRequest) : Promise<Result<LLMResponse, string>> {
 
 /** user-defined types **/
 
+export type FileContent = { path: string; content: string }
+export type FileEntry = { path: string; name: string; is_dir: boolean; children: FileEntry[] | null }
+export type FsError = { Io: string } | "SecurityViolation" | "InvalidPath"
 export type LLMConfig = { api_key: string; base_url: string; model: string; temperature: number }
 export type LLMRequest = { messages: Message[]; config: LLMConfig }
 export type LLMResponse = { content: string; usage: Partial<{ [key in string]: number }> | null }

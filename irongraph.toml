@@ -12,3 +12,11 @@ description = "Handles HTTP connections to OpenAI-compatible LLM providers."
 inputs = ["LLMRequest { system_prompt, user_message, config }"]
 outputs = ["Result<LLMResponse, GatewayError>"]
 dependencies = ["reqwest", "serde", "specta"]
+
+[[node]]
+id = "workspace_manager"
+type = "backend_crate"
+description = "Handles File System reading and writing with sandbox enforcement."
+inputs = ["FileRequest { path }", "WriteRequest { path, content }"]
+outputs = ["Result<Vec<FileEntry>, FsError>", "Result<FileContent, FsError>"]
+dependencies = ["walkdir", "specta"]
