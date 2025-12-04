@@ -1,14 +1,26 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+use specta::Type;
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, Type)]
+pub struct UserProfile {
+    pub id: i32,
+    pub name: String,
+    pub bio: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[derive(Clone)]
+pub struct DbPool;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl DbPool {
+    pub fn new() -> Self {
+        Self
+    }
+
+    // Mock method to simulate updating a user
+    pub fn update_user(&self, name: String, bio: String) -> UserProfile {
+        UserProfile {
+            id: 1,
+            name,
+            bio,
+        }
     }
 }

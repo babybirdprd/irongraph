@@ -1,0 +1,10 @@
+[package]
+name = "feature_profile"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+specta = { version = "=2.0.0-rc.22", features = ["serde"] }
+tauri = { version = "^2.0.0", features = ["specta"] }
+shared_db = { path = "../shared_db" }
