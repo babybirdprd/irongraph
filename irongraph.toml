@@ -1,0 +1,6 @@
+[[node]]
+id = "feature_profile"
+type = "backend_crate"
+inputs = ["UpdateProfileRequest { name, bio }"]
+outputs = ["Result<UserProfile, String>"]
+dependencies = ["shared_db"]
