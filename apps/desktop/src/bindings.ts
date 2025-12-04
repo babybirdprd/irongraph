@@ -12,6 +12,14 @@ async updateProfile(req: UpdateProfileReq) : Promise<Result<UserProfile, string>
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
 }
+},
+async sendChat(req: LLMRequest) : Promise<Result<LLMResponse, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("send_chat", { req }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
 }
 }
 
@@ -25,6 +33,10 @@ async updateProfile(req: UpdateProfileReq) : Promise<Result<UserProfile, string>
 
 /** user-defined types **/
 
+export type LLMConfig = { api_key: string; base_url: string; model: string; temperature: number }
+export type LLMRequest = { messages: Message[]; config: LLMConfig }
+export type LLMResponse = { content: string; usage: Partial<{ [key in string]: number }> | null }
+export type Message = { role: string; content: string }
 export type UpdateProfileReq = { name: string; bio: string }
 export type UserProfile = { id: number; name: string; bio: string }
 
