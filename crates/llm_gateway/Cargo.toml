@@ -11,6 +11,7 @@ specta = { version = "=2.0.0-rc.22", features = ["serde"] }
 tauri-specta = { version = "=2.0.0-rc.21", features = [] }
 tauri = { version = "^2.0.0", features = ["specta"] }
 thiserror = "1"
+quick-xml = { version = "0.31", features = ["serialize"] }
 
 [dev-dependencies]
 mockito = "1.4"
