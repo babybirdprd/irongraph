@@ -27,3 +27,4 @@ specta = { version = "=2.0.0-rc.22", features = ["serde"] }
 specta-typescript = "0.0.9"
 feature_profile = { path = "../../../crates/feature_profile" }
 shared_db = { path = "../../../crates/shared_db" }
+llm_gateway = { path = "../../../crates/llm_gateway" }

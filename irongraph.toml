@@ -4,3 +4,11 @@ type = "backend_crate"
 inputs = ["UpdateProfileRequest { name, bio }"]
 outputs = ["Result<UserProfile, String>"]
 dependencies = ["shared_db"]
+
+[[node]]
+id = "llm_gateway"
+type = "backend_crate"
+description = "Handles HTTP connections to OpenAI-compatible LLM providers."
+inputs = ["LLMRequest { system_prompt, user_message, config }"]
+outputs = ["Result<LLMResponse, GatewayError>"]
+dependencies = ["reqwest", "serde", "specta"]

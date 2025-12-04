@@ -6,7 +6,8 @@ use specta_typescript::Typescript;
 pub fn run() {
     let builder = Builder::<tauri::Wry>::new()
         .commands(collect_commands![
-            feature_profile::commands::update_profile
+            feature_profile::commands::update_profile,
+            llm_gateway::commands::send_chat
         ]);
 
     #[cfg(debug_assertions)] // Only export TS bindings in dev mode
@@ -34,7 +35,8 @@ mod tests {
     fn export_bindings() {
         let builder = Builder::<tauri::Wry>::new()
             .commands(collect_commands![
-                feature_profile::commands::update_profile
+                feature_profile::commands::update_profile,
+                llm_gateway::commands::send_chat
             ]);
 
         // Path relative to Cargo.toml of the crate running the test
