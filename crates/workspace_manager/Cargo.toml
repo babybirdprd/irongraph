@@ -11,6 +11,12 @@ specta = { version = "=2.0.0-rc.22", features = ["serde"] }
 tauri-specta = { version = "=2.0.0-rc.21", features = [] }
 tauri = { version = "^2.0.0", features = ["specta"] }
 common = { path = "../common" }
+grep-regex = "0.1.14"
+grep-searcher = "0.1.16"
+ignore = "0.4.25"
+syn = { version = "2.0.111", features = ["full"] }
+swc_ecma_parser = "29.0.0"
+swc_common = "18.0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

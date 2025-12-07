@@ -45,9 +45,33 @@ async writeFile(filePath: string, content: string) : Promise<Result<FileContent,
     else return { status: "error", error: e  as any };
 }
 },
+async searchCode(query: string) : Promise<Result<string[], FsError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("search_code", { query }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async runCommand(program: string, args: string[]) : Promise<Result<CommandOutput, ShellError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("run_command", { program, args }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async startAgentLoop(prompt: string) : Promise<Result<string, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("start_agent_loop", { prompt }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async writeTerminal(sessionId: string, input: string) : Promise<Result<null, ShellError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("write_terminal", { sessionId, input }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -68,12 +92,12 @@ async runCommand(program: string, args: string[]) : Promise<Result<CommandOutput
 export type CommandOutput = { stdout: string; stderr: string; exit_code: number }
 export type FileContent = { path: string; content: string }
 export type FileEntry = { path: string; name: string; is_dir: boolean; children: FileEntry[] | null }
-export type FsError = { Io: string } | "SecurityViolation" | "InvalidPath"
+export type FsError = { Io: string } | "SecurityViolation" | "InvalidPath" | { Syntax: string }
 export type LLMConfig = { api_key: string; base_url: string; model: string; temperature: number }
 export type LLMRequest = { messages: Message[]; config: LLMConfig }
 export type LLMResponse = { role: string; content: string; tool_calls: ToolCall[] | null; usage: Partial<{ [key in string]: number }> | null }
 export type Message = { role: string; content: string }
-export type ShellError = { Io: string } | { NotFound: string }
+export type ShellError = { Io: string } | { NotFound: string } | { Pty: string }
 export type ToolCall = { name: string; arguments: Partial<{ [key in string]: string }> }
 export type UpdateProfileReq = { name: string; bio: string }
 export type UserProfile = { id: number; name: string; bio: string }

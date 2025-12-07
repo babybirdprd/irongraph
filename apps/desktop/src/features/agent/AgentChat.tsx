@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useAgentLoop } from "../../hooks/useAgentLoop";
+import { useBackendAgent } from "../../hooks/useBackendAgent";
 import { Message } from "../../bindings";
 
 // Helper component for message rendering
@@ -93,7 +93,7 @@ const ToolLog = ({ content }: { content: string }) => {
 }
 
 export function AgentChat() {
-    const { messages, isLooping, startLoop, stopLoop } = useAgentLoop();
+    const { messages, isLooping, startLoop, stopLoop } = useBackendAgent();
     const [input, setInput] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
 

@@ -4,10 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1", features = ["process", "io-util"] }
+tokio = { version = "1", features = ["process", "io-util", "sync"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 specta = { version = "=2.0.0-rc.22", features = ["serde"] }
 tauri-specta = { version = "=2.0.0-rc.21", features = [] }
 tauri = { version = "^2.0.0", features = ["specta"] }
 common = { path = "../common" }
+portable-pty = "0.9.0"
+uuid = { version = "1.19.0", features = ["v4"] }

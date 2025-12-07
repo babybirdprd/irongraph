@@ -31,3 +31,4 @@ llm_gateway = { path = "../../../crates/llm_gateway" }
 workspace_manager = { path = "../../../crates/workspace_manager" }
 terminal_manager = { path = "../../../crates/terminal_manager" }
 common = { path = "../../../crates/common" }
+agent_core = { path = "../../../crates/agent_core" }
