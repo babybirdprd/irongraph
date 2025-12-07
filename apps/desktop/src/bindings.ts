@@ -53,6 +53,14 @@ async searchCode(query: string) : Promise<Result<string[], FsError>> {
     else return { status: "error", error: e  as any };
 }
 },
+async readSkeleton(filePath: string) : Promise<Result<string, FsError>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("read_skeleton", { filePath }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async runCommand(program: string, args: string[]) : Promise<Result<CommandOutput, ShellError>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("run_command", { program, args }) };

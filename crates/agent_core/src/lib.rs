@@ -56,6 +56,105 @@ impl Drop for AgentSession {
 
 const SYSTEM_PROMPT: &str = "You are IronGraph, an advanced AI software engineer...";
 
+fn try_parse_error_context(root: &std::path::Path, stderr: &str) -> Option<String> {
+    // Regex for Rust errors: `error[E...]: ... --> src/main.rs:10:5`
+    // Regex for generic file:line:col: `path/to/file:line:col`
+    // We try to catch common formats.
+
+    // Rust: `--> file:line:col`
+    let rust_re = regex::Regex::new(r"-->\s+(.+):(\d+):(\d+)").ok()?;
+
+    // TS/JS/Generic: `file(line,col):` or `file:line:col:`
+    // Note: This matches start of line or space
+    let generic_re = regex::Regex::new(r"(?m)(?:^|\s)([\w./-]+):(\d+):(\d+)").ok()?;
+
+    // TypeScript (tsc): `file.ts(12,3): error TS...`
+    let ts_re = regex::Regex::new(r"([\w./-]+)\((\d+),\d+\):\s+error").ok()?;
+
+    let mut location = None;
+
+    if let Some(caps) = rust_re.captures(stderr) {
+        if let (Some(f), Some(l)) = (caps.get(1), caps.get(2)) {
+             location = Some((f.as_str().to_string(), l.as_str().parse::<usize>().unwrap_or(0)));
+        }
+    } else if let Some(caps) = ts_re.captures(stderr) {
+        if let (Some(f), Some(l)) = (caps.get(1), caps.get(2)) {
+             location = Some((f.as_str().to_string(), l.as_str().parse::<usize>().unwrap_or(0)));
+        }
+    } else if let Some(caps) = generic_re.captures(stderr) {
+         if let (Some(f), Some(l)) = (caps.get(1), caps.get(2)) {
+             // Basic filter to avoid matching random text like "http://localhost:3000" (which has :)
+             // Although regex requires digit after :
+             let path = f.as_str();
+             if path.contains('.') { // Assume file has extension
+                 location = Some((path.to_string(), l.as_str().parse::<usize>().unwrap_or(0)));
+             }
+        }
+    }
+
+    if let Some((file, line)) = location {
+        // Read window around line
+        if let Ok(fc) = workspace_manager::read_file_internal(root, file.clone()) {
+            let lines: Vec<&str> = fc.content.lines().collect();
+            if line > 0 && line <= lines.len() {
+                let start = if line > 5 { line - 5 } else { 0 };
+                let end = if line + 5 < lines.len() { line + 5 } else { lines.len() };
+
+                let snippet = lines[start..end].iter().enumerate().map(|(i, l)| {
+                    let curr_line = start + i + 1;
+                    let marker = if curr_line == line { ">> " } else { "   " };
+                    format!("{}{}| {}", marker, curr_line, l)
+                }).collect::<Vec<_>>().join("\n");
+
+                return Some(format!("File: {}:{}:\n{}", file, line, snippet));
+            }
+        }
+    }
+
+    None
+}
+
+fn find_usages(root: &std::path::Path, file_path: &str) -> Option<Vec<String>> {
+    let path_obj = std::path::Path::new(file_path);
+    let extension = path_obj.extension().and_then(|e| e.to_str()).unwrap_or("");
+
+    let search_term = if extension == "rs" {
+        // Rust strategy
+        if let Some(stem) = path_obj.file_stem().and_then(|s| s.to_str()) {
+            if stem == "mod" {
+                // src/foo/mod.rs -> foo
+                path_obj.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).map(|s| s.to_string())
+            } else {
+                Some(stem.to_string())
+            }
+        } else {
+            None
+        }
+    } else if ["ts", "tsx", "js", "jsx"].contains(&extension) {
+        // JS/TS Strategy: naive import check (filename without extension)
+        path_obj.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string())
+    } else {
+        None
+    };
+
+    if let Some(term) = search_term {
+        let query = format!(r"\b{}\b", regex::escape(&term));
+        if let Ok(matches) = workspace_manager::search_code_internal(root, &query) {
+             let mut consumers = Vec::new();
+             for m in matches {
+                 // m format: path:line: content
+                 if let Some((path_part, _)) = m.split_once(':') {
+                     if path_part != file_path && !consumers.contains(&path_part.to_string()) {
+                         consumers.push(path_part.to_string());
+                     }
+                 }
+             }
+             return Some(consumers);
+        }
+    }
+    None
+}
+
 pub async fn spawn_agent_loop(
     window: Window,
     session: Arc<AgentSession>,
@@ -145,6 +244,17 @@ pub async fn spawn_agent_loop(
                 messages,
                 config: config.clone(),
             };
+
+            // Context Inspection
+            if let Ok(bpe) = tiktoken_rs::cl100k_base() {
+                 let mut full_text = String::new();
+                 for m in &req.messages {
+                     full_text.push_str(&m.role);
+                     full_text.push_str(&m.content);
+                 }
+                 let tokens = bpe.encode_with_special_tokens(&full_text).len();
+                 let _ = window.emit(&format!("agent:debug:stats:{}", session_id), tokens);
+            }
 
             let mut stream = stream_chat(req);
 
@@ -286,14 +396,23 @@ async fn execute_tool(
                      if let Some(idx) = output.find("IRONGRAPH_CMD_DONE:") {
                          let ret = output[..idx].to_string();
                          let rest = &output[idx..];
-                         let code = rest.trim_start_matches("IRONGRAPH_CMD_DONE:").trim();
+                         let code_str = rest.trim_start_matches("IRONGRAPH_CMD_DONE:").trim();
+                         let exit_code = code_str.parse::<i32>().unwrap_or(1);
 
                          {
                              let mut buf_lock = session.command_buffer.lock().unwrap();
                              *buf_lock = None;
                          }
 
-                         return format!("{}\n(Exit Code: {})", ret.trim(), code);
+                         let mut final_output = format!("{}\n(Exit Code: {})", ret.trim(), exit_code);
+
+                         if exit_code != 0 {
+                             if let Some(debug_ctx) = try_parse_error_context(&root, &ret) {
+                                 final_output.push_str(&format!("\n\n[Auto-Debug] Context:\n{}", debug_ctx));
+                             }
+                         }
+
+                         return final_output;
                      }
                  }
 
@@ -332,10 +451,37 @@ async fn execute_tool(
         "write_file" => {
              let path = tool.arguments.get("file_path").cloned().unwrap_or_default();
              let content = tool.arguments.get("content").cloned().unwrap_or_default();
-             match workspace_manager::write_file_internal(&root, path, content) {
-                 Ok(_) => "Successfully wrote file.".to_string(),
+             match workspace_manager::write_file_internal(&root, path.clone(), content) {
+                 Ok(_) => {
+                     // Dependency Injection Check
+                     let mut output = "Successfully wrote file.".to_string();
+                     if let Some(consumers) = find_usages(&root, &path) {
+                         if !consumers.is_empty() {
+                             output.push_str("\n\n[Context Note] This file is imported by:\n");
+                             for c in consumers.iter().take(10) {
+                                 output.push_str(&format!("- {}\n", c));
+                             }
+                             if consumers.len() > 10 {
+                                 output.push_str(&format!("... and {} more.\n", consumers.len() - 10));
+                             }
+                             output.push_str("Ensure you have not broken these consumers.");
+                         }
+                     }
+                     output
+                 },
                  Err(e) => format!("Error: {}", e)
              }
+        },
+        "read_skeleton" => {
+            let path = tool.arguments.get("file_path").cloned().unwrap_or_default();
+            let fc = workspace_manager::read_file_internal(&root, path.clone());
+            match fc {
+                Ok(c) => match workspace_manager::get_skeleton(std::path::Path::new(&path), &c.content) {
+                    Ok(s) => s,
+                    Err(e) => format!("Error generating skeleton: {}", e),
+                },
+                Err(e) => format!("Error reading file: {}", e),
+            }
         },
         "search_code" => {
              let query = tool.arguments.get("query").cloned().unwrap_or_default();
