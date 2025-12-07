@@ -22,7 +22,7 @@ oxc_span = "0.101.0"
 oxc_codegen = "0.101.0"
 oxc_ast = "0.101.0"
 oxc_ast_visit = "0.101.0"
-radkit = "0.0.3"
+radkit = { git = "https://github.com/agents-sh/radkit.git" }
 schemars = "0.8"
 regex = "1.12.2"
 serde_json = "1"

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Window, Emitter};
 use tokio::sync::mpsc;
 use async_trait::async_trait;
-use radkit::models::providers::AnthropicLlm;
+use radkit::models::providers::OpenRouterLlm;
 use radkit::models::{BaseLlm, ContentPart, Thread, Event};
 use radkit::tools::{BaseToolset, SimpleToolset, ToolContext, ToolResponse};
 
@@ -130,7 +130,9 @@ pub async fn spawn_agent_loop(
     let light_state = SessionState::new(session_id.clone());
 
     // Use config
-    let llm = AnthropicLlm::new(config.model, config.api_key);
+    let llm = OpenRouterLlm::new(config.model, config.api_key)
+        .with_site_url("https://irongraph.app")
+        .with_app_name("IronGraph");
 
     // Setup Tools
     use radkit::tools::BaseTool;

@@ -11,6 +11,8 @@ use db::SqliteHistory;
 use sqlx::sqlite::SqlitePoolOptions;
 use std::path::PathBuf;
 
+const OPENROUTER_KEY: &str = "";
+
 #[tauri::command]
 #[specta::specta]
 async fn write_terminal(
@@ -47,8 +49,8 @@ async fn start_agent_loop(
          // BUT reviewer requested config restoration.
          // We will pass env vars if possible or default.
          let config = LLMConfig {
-             api_key: std::env::var("ANTHROPIC_API_KEY").unwrap_or_default(),
-             model: "claude-3-5-sonnet".to_string(),
+             api_key: std::env::var("OPENROUTER_API_KEY").unwrap_or(OPENROUTER_KEY.to_string()),
+             model: "deepseek/deepseek-v3.2".to_string(),
          };
 
          let ws_arc = workspace_state.0.clone();

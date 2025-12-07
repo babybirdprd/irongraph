@@ -20,5 +20,5 @@ async-trait = "0.1.89"
 anyhow = "1.0.100"
 tiktoken-rs = "0.5"
 regex = "1.12.2"
-radkit = "0.0.3"
+radkit = { git = "https://github.com/agents-sh/radkit.git" }
 schemars = "0.8"
