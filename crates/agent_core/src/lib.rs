@@ -6,24 +6,50 @@ use llm_gateway::{LLMRequest, Message, LLMConfig, StreamEvent, ToolCall, stream_
 use futures::StreamExt;
 use terminal_manager::TerminalState;
 use tokio::sync::mpsc;
+use async_trait::async_trait;
+
+mod shell;
+use shell::ShellType;
+
+// Define HistoryRepository trait for persistence abstraction
+#[async_trait]
+pub trait HistoryRepository: Send + Sync {
+    async fn add_message(&self, session_id: &str, message: Message) -> anyhow::Result<()>;
+    async fn get_history(&self, session_id: &str) -> anyhow::Result<Vec<Message>>;
+}
 
 pub struct AgentSession {
     pub id: String,
     pub history: Arc<Mutex<Vec<Message>>>,
+    pub repository: Arc<Box<dyn HistoryRepository>>,
     pub status: AtomicBool,
     pub terminal_session_id: Mutex<Option<String>>,
-    // Buffer for active command output
     pub command_buffer: Arc<Mutex<Option<mpsc::Sender<String>>>>,
+    pub terminal_state: Option<Arc<TerminalState>>,
 }
 
 impl AgentSession {
-    pub fn new() -> Self {
+    pub fn new(repository: Box<dyn HistoryRepository>, terminal_state: Arc<TerminalState>) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             history: Arc::new(Mutex::new(Vec::new())),
+            repository: Arc::new(repository),
             status: AtomicBool::new(false),
             terminal_session_id: Mutex::new(None),
             command_buffer: Arc::new(Mutex::new(None)),
+            terminal_state: Some(terminal_state),
+        }
+    }
+}
+
+impl Drop for AgentSession {
+    fn drop(&mut self) {
+        if let Some(state) = &self.terminal_state {
+            if let Ok(guard) = self.terminal_session_id.lock() {
+                if let Some(id) = guard.as_ref() {
+                    let _ = terminal_manager::kill_session(state, id);
+                }
+            }
         }
     }
 }
@@ -41,12 +67,32 @@ pub async fn spawn_agent_loop(
     let session_id = session.id.clone();
     let session_clone = session.clone();
 
+    // Load history from DB if empty
     {
-        let mut history = session.history.lock().unwrap();
-        if history.is_empty() {
-             history.push(Message { role: "system".into(), content: SYSTEM_PROMPT.into() });
+        // Check if history is empty (locked)
+        let is_empty = session.history.lock().unwrap().is_empty();
+
+        if is_empty {
+             match session.repository.get_history(&session_id).await {
+                 Ok(msgs) if !msgs.is_empty() => {
+                     let mut history = session.history.lock().unwrap();
+                     *history = msgs;
+                 },
+                 _ => {
+                     // New Session
+                     let sys = Message { role: "system".into(), content: SYSTEM_PROMPT.into() };
+                     let _ = session.repository.add_message(&session_id, sys.clone()).await;
+                     let mut history = session.history.lock().unwrap();
+                     history.push(sys);
+                 }
+             }
         }
-        history.push(Message { role: "user".into(), content: initial_prompt });
+
+        // Add User Prompt
+        let user_msg = Message { role: "user".into(), content: initial_prompt.clone() };
+        let _ = session.repository.add_message(&session_id, user_msg.clone()).await;
+        let mut history = session.history.lock().unwrap();
+        history.push(user_msg);
     }
 
     {
@@ -63,10 +109,8 @@ pub async fn spawn_agent_loop(
 
                     tokio::spawn(async move {
                          while let Some(out) = rx.recv().await {
-                             // 1. Emit to frontend
                              let _ = win_clone.emit(&format!("agent:terminal:output:{}", tid), out.clone());
 
-                             // 2. Forward to active command buffer if present
                              let sender_opt = {
                                  buffer_arc.lock().unwrap().clone()
                              };
@@ -139,12 +183,15 @@ pub async fn spawn_agent_loop(
                 }
             }
 
+            let asst_msg = Message {
+                role: "assistant".into(),
+                content: assistant_content.clone(),
+            };
+            let _ = session.repository.add_message(&session_id, asst_msg.clone()).await;
+
             {
                 let mut history = session.history.lock().unwrap();
-                history.push(Message {
-                    role: "assistant".into(),
-                    content: assistant_content.clone(),
-                });
+                history.push(asst_msg);
             }
 
             if tool_calls.is_empty() {
@@ -158,12 +205,15 @@ pub async fn spawn_agent_loop(
 
                 let result_msg = format!("Tool Output [{}]:\n{}", tool.name, output);
 
+                let tool_msg = Message {
+                    role: "user".into(),
+                    content: result_msg.clone(),
+                };
+                let _ = session.repository.add_message(&session_id, tool_msg.clone()).await;
+
                 {
                     let mut history = session.history.lock().unwrap();
-                    history.push(Message {
-                        role: "user".into(),
-                        content: result_msg.clone(),
-                    });
+                    history.push(tool_msg);
                 }
 
                 let _ = window.emit(&format!("agent:tool_output:{}", session_id), result_msg);
@@ -191,53 +241,38 @@ async fn execute_tool(
 
             let tid_opt = session.terminal_session_id.lock().unwrap().clone();
             if let Some(tid) = tid_opt {
-                 // 1. Setup buffer channel
                  let (tx, mut rx) = mpsc::channel(100);
                  {
                      let mut buf_lock = session.command_buffer.lock().unwrap();
                      *buf_lock = Some(tx);
                  }
 
-                 // 2. Inject Sentinel
-                 // We don't use terminal_manager::run_command_internal directly because it appends \n.
-                 // We want to construct "cmd; echo ...".
-                 // We will use terminal_manager::write_to_pty (via public API?)
-                 // terminal_manager only exposes write_to_pty and run_command_internal.
-                 // run_command_internal uses "program args".
-                 // We want to inject shell syntax.
-                 // If the persistent session is bash, we can run `program args; echo...`?
-                 // `run_command_internal` joins args.
-                 // We should manually construct the command line.
-                 // We will bypass `run_command_internal` logic slightly or abuse it.
-                 // Let's manually invoke write_to_pty.
-
                  let cmd_str = if args.is_empty() {
                      program
                  } else {
-                     // Need to escape args? shlex::join is best but not available in std.
-                     // Simple join.
                      format!("{} {}", program, args.join(" "))
                  };
 
-                 let sentinel_cmd = format!("{}; echo \"IRONGRAPH_CMD_DONE:$?\"\n", cmd_str);
+                 #[cfg(target_os = "windows")]
+                 let shell_type = ShellType::Cmd;
+                 #[cfg(not(target_os = "windows"))]
+                 let shell_type = ShellType::Bash;
+
+                 let sentinel_cmd = shell_type.format_with_sentinel(&cmd_str);
 
                  if let Err(e) = terminal_manager::write_to_pty(terminal_state_arc, &tid, &sentinel_cmd) {
                      return format!("Error writing to PTY: {}", e);
                  }
 
-                 // 3. Accumulate Output
                  let mut output = String::new();
                  let start = std::time::Instant::now();
-                 let timeout = std::time::Duration::from_secs(30); // Max wait
+                 let timeout = std::time::Duration::from_secs(30);
 
                  loop {
                      let chunk = match tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await {
                          Ok(Some(s)) => s,
-                         Ok(None) => break, // Channel closed
+                         Ok(None) => break,
                          Err(_) => {
-                             // Timeout on READ (no output for 5s).
-                             // Are we done? Maybe interactive prompt?
-                             // Check total timeout
                              if start.elapsed() > timeout {
                                  output.push_str("\n[IronGraph: Timeout waiting for sentinel]");
                                  break;
@@ -249,16 +284,10 @@ async fn execute_tool(
                      output.push_str(&chunk);
 
                      if let Some(idx) = output.find("IRONGRAPH_CMD_DONE:") {
-                         // Extract code?
-                         // "IRONGRAPH_CMD_DONE:0\n"
-                         // We strip everything from idx onwards for the return value?
                          let ret = output[..idx].to_string();
-                         // We could parse exit code to append "Exit Code: 0"
                          let rest = &output[idx..];
                          let code = rest.trim_start_matches("IRONGRAPH_CMD_DONE:").trim();
-                         // code might be "0", "1", etc.
 
-                         // Clear buffer
                          {
                              let mut buf_lock = session.command_buffer.lock().unwrap();
                              *buf_lock = None;

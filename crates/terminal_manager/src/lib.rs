@@ -33,6 +33,13 @@ pub struct PtySession {
     pub child: Box<dyn Child + Send + Sync>,
 }
 
+impl Drop for PtySession {
+    fn drop(&mut self) {
+        // Attempt to kill the process on drop
+        let _ = self.child.kill();
+    }
+}
+
 pub struct TerminalState {
     pub sessions: Mutex<HashMap<String, Arc<Mutex<PtySession>>>>,
 }
@@ -137,6 +144,15 @@ pub fn write_to_pty(state: &Arc<TerminalState>, session_id: &str, input: &str) -
         let mut session = session_arc.lock().unwrap();
         session.writer.write_all(input.as_bytes()).map_err(|e| ShellError::Io(e.to_string()))?;
         session.writer.flush().map_err(|e| ShellError::Io(e.to_string()))?;
+        Ok(())
+    } else {
+        Err(ShellError::NotFound("Session ID".into()))
+    }
+}
+
+pub fn kill_session(state: &Arc<TerminalState>, session_id: &str) -> Result<(), ShellError> {
+    let mut sessions = state.sessions.lock().unwrap();
+    if sessions.remove(session_id).is_some() {
         Ok(())
     } else {
         Err(ShellError::NotFound("Session ID".into()))

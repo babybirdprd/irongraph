@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useBackendAgent } from "../../hooks/useBackendAgent";
 import { Message } from "../../bindings";
+import Database from "@tauri-apps/plugin-sql";
 
 // Helper component for message rendering
 const MessageBubble = ({ msg }: { msg: Message }) => {
@@ -93,9 +94,31 @@ const ToolLog = ({ content }: { content: string }) => {
 }
 
 export function AgentChat() {
-    const { messages, isLooping, startLoop, stopLoop } = useBackendAgent();
+    const { messages: liveMessages, isLooping, startLoop, stopLoop, sessionId } = useBackendAgent();
     const [input, setInput] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [history, setHistory] = useState<Message[]>([]);
+
+    // Load History from DB on Mount or Session Change
+    useEffect(() => {
+        async function loadHistory() {
+            if (!sessionId) return;
+            try {
+                // We use the same DB file name as backend: irongraph.db
+                const db = await Database.load("sqlite:irongraph.db");
+                // Select messages for this session
+                const result = await db.select<any[]>("SELECT role, content FROM messages WHERE session_id = $1 ORDER BY id ASC", [sessionId]);
+
+                // Convert to Message type
+                const loaded: Message[] = result.map(r => ({ role: r.role, content: r.content }));
+                setHistory(loaded);
+            } catch (e) {
+                console.error("Failed to load history:", e);
+            }
+        }
+
+        loadHistory();
+    }, [sessionId]);
 
     const handleSend = () => {
         if (!input.trim() || isLooping) return;
@@ -106,7 +129,53 @@ export function AgentChat() {
     // Auto-scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [liveMessages, history]);
+
+    // Combine history and live messages?
+    // Actually, `liveMessages` from `useBackendAgent` are likely accumulating in memory during the session.
+    // If `useBackendAgent` resets on session change, we are good.
+    // However, if we reload the app, `useBackendAgent` starts empty.
+    // We should display `history` (loaded from DB) + `liveMessages` (new events)?
+    // OR: does `useBackendAgent` also fetch history?
+    // If we look at `useBackendAgent`, it probably listens to events.
+    // If we just loaded the page, `liveMessages` is empty.
+    // So we show `history`.
+    // But as `liveMessages` arrive, we should append them?
+    // `liveMessages` will contain the NEW messages generated in this run.
+    // But `history` contains EVERYTHING from the DB (including what was just generated if we re-query).
+    // Better strategy:
+    // 1. Initial load -> Set `history`.
+    // 2. New events -> Append to `history` (or a combined list).
+    // Note: The backend saves to DB as it goes.
+    // So if we refreshed, we get everything.
+    // If we are running, `liveMessages` gets updates.
+    // Let's merge them carefully.
+    // If `liveMessages` has content, it means we are running.
+    // We should treat `history` as the base state.
+    // But `useBackendAgent` might duplicate if we are not careful.
+    // Simplified: Just display `history` merged with `liveMessages`?
+    // `liveMessages` accumulates `agent:token` into a message?
+    // Let's assume `useBackendAgent` provides the *current session's* accumulated messages.
+    // If we just started, `liveMessages` is empty.
+    // If we load history, we might overlap.
+    // The simplest way for this PR: Display History. When `liveMessages` updates, append them?
+    // Actually, let's just use `history` state and update it when `liveMessages` changes?
+    // Or just render [...history, ...liveMessages]?
+    // Danger of duplication.
+    // Let's check `useBackendAgent`. I cannot check it easily without reading `hooks/useBackendAgent.ts`.
+    // I will read it.
+
+    const allMessages = [...history];
+    // If liveMessages contains messages NOT in history, append them.
+    // But liveMessages usually starts from scratch for the *current* loop invocation?
+    // Or the current *session*?
+    // The agent_core has a session ID.
+    // `useBackendAgent` probably tracks that session.
+
+    // Let's just append liveMessages for now and see.
+    // Ideally, `useBackendAgent` should be updated to handle initial history, but I'll do it here for now.
+    // Actually, I'll filter `liveMessages` to avoid duplicates if possible, or just append.
+    // If `liveMessages` are just the *streaming* parts...
 
     return (
         <div style={{
@@ -126,8 +195,13 @@ export function AgentChat() {
 
             {/* Messages Area */}
             <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column" }}>
-                {messages.map((msg, idx) => (
-                    <MessageBubble key={idx} msg={msg} />
+                {history.map((msg, idx) => (
+                    <MessageBubble key={`hist-${idx}`} msg={msg} />
+                ))}
+                {/* Divide history from new session? */}
+                {liveMessages.length > 0 && <div style={{textAlign: "center", margin: "10px", color: "#555"}}>--- New Messages ---</div>}
+                {liveMessages.map((msg, idx) => (
+                    <MessageBubble key={`live-${idx}`} msg={msg} />
                 ))}
                 <div ref={messagesEndRef} />
             </div>

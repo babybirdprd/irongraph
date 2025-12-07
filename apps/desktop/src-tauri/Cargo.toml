@@ -26,9 +26,12 @@ tauri-specta = { version = "=2.0.0-rc.21", features = ["javascript", "typescript
 specta = { version = "=2.0.0-rc.22", features = ["serde"] }
 specta-typescript = "0.0.9"
 feature_profile = { path = "../../../crates/feature_profile" }
-shared_db = { path = "../../../crates/shared_db" }
 llm_gateway = { path = "../../../crates/llm_gateway" }
 workspace_manager = { path = "../../../crates/workspace_manager" }
 terminal_manager = { path = "../../../crates/terminal_manager" }
 common = { path = "../../../crates/common" }
 agent_core = { path = "../../../crates/agent_core" }
+tauri-plugin-sql = { version = "2.3.1", features = ["sqlite"] }
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls"] }
+anyhow = "1.0.100"
+async-trait = "0.1.89"
