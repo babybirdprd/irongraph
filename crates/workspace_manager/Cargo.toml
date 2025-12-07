@@ -14,9 +14,14 @@ common = { path = "../common" }
 grep-regex = "0.1.14"
 grep-searcher = "0.1.16"
 ignore = "0.4.25"
-syn = { version = "2.0.111", features = ["full"] }
-swc_ecma_parser = "29.0.0"
-swc_common = "18.0.1"
+syn = { version = "2.0.111", features = ["full", "visit-mut"] }
+prettyplease = "0.2.37"
+oxc_allocator = "0.101.0"
+oxc_parser = "0.101.0"
+oxc_span = "0.101.0"
+oxc_codegen = "0.101.0"
+oxc_ast = "0.101.0"
+oxc_ast_visit = "0.101.0"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

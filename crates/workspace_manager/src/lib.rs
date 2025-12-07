@@ -6,8 +6,9 @@ use grep_regex::RegexMatcher;
 use grep_searcher::{Searcher, sinks::UTF8};
 use ignore::WalkBuilder;
 use syn::parse_file;
-use swc_common::{sync::Lrc, SourceMap, FileName};
-use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
+
+mod skeleton;
+pub use skeleton::get_skeleton;
 
 pub use common::WorkspaceState;
 
@@ -157,28 +158,13 @@ fn validate_syntax(path: &str, content: &str) -> Result<(), String> {
     if path.ends_with(".rs") {
         parse_file(content).map_err(|e| format!("Rust Syntax Error: {}", e))?;
     } else if path.ends_with(".ts") || path.ends_with(".js") || path.ends_with(".tsx") || path.ends_with(".jsx") {
-        let cm: Lrc<SourceMap> = Default::default();
-        let fm = cm.new_source_file(Lrc::new(FileName::Custom("test.ts".into())), content.to_string());
+        let allocator = oxc_allocator::Allocator::default();
+        let source_type = oxc_span::SourceType::from_path(std::path::Path::new(path)).unwrap_or_default();
+        let ret = oxc_parser::Parser::new(&allocator, content, source_type).parse();
 
-        let syntax = if path.ends_with(".ts") || path.ends_with(".tsx") {
-            Syntax::Typescript(Default::default())
-        } else {
-            Syntax::Es(Default::default())
-        };
-
-        let lexer = Lexer::new(
-            syntax,
-            Default::default(),
-            StringInput::from(&*fm),
-            None,
-        );
-
-        let mut parser = Parser::new_from(lexer);
-
-        // We just parse a module to check validity
-        parser.parse_module().map_err(|e| {
-             format!("JS/TS Syntax Error: {:?}", e) // Simplify error msg
-        })?;
+        if !ret.errors.is_empty() {
+             return Err(format!("JS/TS Syntax Error: {:?}", ret.errors[0]));
+        }
     }
     Ok(())
 }
@@ -250,6 +236,14 @@ pub mod commands {
     pub async fn search_code(state: State<'_, WorkspaceState>, query: String) -> Result<Vec<String>, FsError> {
          let root = state.0.lock().map_err(|_| FsError::Io("Lock poison".into()))?.clone();
          search_code_internal(&root, &query)
+    }
+
+    #[tauri::command]
+    #[specta::specta]
+    pub async fn read_skeleton(state: State<'_, WorkspaceState>, file_path: String) -> Result<String, FsError> {
+        let root = state.0.lock().map_err(|_| FsError::Io("Lock poison".into()))?.clone();
+        let fc = read_file_internal(&root, file_path.clone())?;
+        get_skeleton(Path::new(&file_path), &fc.content).map_err(|e| FsError::Io(e))
     }
 }
 

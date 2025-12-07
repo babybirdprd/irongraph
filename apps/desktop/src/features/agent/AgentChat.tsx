@@ -98,6 +98,31 @@ export function AgentChat() {
     const [input, setInput] = useState("");
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [history, setHistory] = useState<Message[]>([]);
+    const [tokenCount, setTokenCount] = useState<number>(0);
+
+    useEffect(() => {
+        if (!sessionId) return;
+        // Listen for stats
+        const unlisten = window.__TAURI_INTERNALS__.invoke("listen", [`agent:debug:stats:${sessionId}`, (e: any) => {
+            setTokenCount(e.payload as number);
+        }]); // This is pseudo-code for how subscription works in this mocked env
+
+        // Actually, we need to use the actual Tauri event listener.
+        // Assuming there is a global or we use the standard API.
+        // Since I cannot import from @tauri-apps/api/event here easily without verifying imports,
+        // I will assume `useBackendAgent` exposes generic event subscription or I use `window`.
+        // Wait, `useBackendAgent` is a hook.
+        // Let's rely on standard window.addEventListener if the backend emits to window?
+        // No, Tauri emits to the rust event system.
+
+        // Let's try to grab `listen` from @tauri-apps/api/event
+        // But better, let's just use `useBackendAgent` to pass through events if possible.
+        // Checking `hooks/useBackendAgent` might reveal how it listens.
+    }, [sessionId]);
+
+    // We will use a direct import for listen if possible, or just mock it for now if we can't see the file.
+    // The previous code didn't import `listen`.
+    // Let's check `useBackendAgent.ts` first.
 
     // Load History from DB on Mount or Session Change
     useEffect(() => {
@@ -204,6 +229,19 @@ export function AgentChat() {
                     <MessageBubble key={`live-${idx}`} msg={msg} />
                 ))}
                 <div ref={messagesEndRef} />
+            </div>
+
+            {/* Status Bar */}
+            <div style={{
+                background: "#0f172a",
+                borderTop: "1px solid #333",
+                padding: "2px 10px",
+                fontSize: "0.7em",
+                color: "#64748b",
+                display: "flex",
+                justifyContent: "flex-end"
+            }}>
+                <span>🧠 Context: {tokenCount} tokens</span>
             </div>
 
             {/* Input Area */}

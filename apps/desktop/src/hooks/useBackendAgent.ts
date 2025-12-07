@@ -257,6 +257,7 @@ export function useBackendAgent() {
     messages,
     isLooping,
     startLoop,
-    stopLoop
+    stopLoop,
+    sessionId
   };
 }
