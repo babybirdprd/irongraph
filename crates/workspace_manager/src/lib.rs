@@ -10,6 +10,8 @@ use syn::parse_file;
 mod skeleton;
 pub use skeleton::get_skeleton;
 
+pub mod tools;
+
 pub use common::WorkspaceState;
 
 #[derive(Error, Debug, Serialize, Type)]
