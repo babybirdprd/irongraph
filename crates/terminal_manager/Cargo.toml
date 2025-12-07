@@ -13,7 +13,7 @@ tauri = { version = "^2.0.0", features = ["specta"] }
 common = { path = "../common" }
 portable-pty = "0.9.0"
 uuid = { version = "1.19.0", features = ["v4"] }
-radkit = "0.0.3"
+radkit = { git = "https://github.com/agents-sh/radkit.git" }
 schemars = "0.8"
 workspace_manager = { path = "../workspace_manager" }
 shlex = "1.3.0"
