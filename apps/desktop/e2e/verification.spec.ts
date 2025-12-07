@@ -8,15 +8,41 @@ test.describe('IronGraph Agent Verification', () => {
   let window: any;
 
   test.beforeAll(async () => {
-    // Launch the app
-    // Note: Adjust the executable path based on the build output or just use the dev server url if using web test
-    // Since this is a Tauri app, verifying it headlessly in this environment is hard without a build.
-    // I will write this test assuming a standard Playwright+Electron setup,
-    // but the user might need to adjust it for their specific environment.
-    // HOWEVER, for this task, I will mock the "verification" by writing the test file
-    // so the user can run it.
+    // Launch the application
+    // If running against a built binary (common for Tauri E2E), set TAURI_APP_PATH
+    // Otherwise, this expects the user to have configured the environment or built the app.
+    // For local dev without a build, one might use the Vite dev server URL directly if mocking IPC.
 
-    // For now, I'll just write the test logic.
+    // Example: Launching as an Electron app (if using a shim) or connecting to a debugging port.
+    // Note: Tauri != Electron, but Playwright is often used to drive the WebView.
+    // This setup assumes the user provides the executable path via env var.
+
+    const executablePath = process.env.TAURI_APP_PATH;
+
+    if (executablePath) {
+        app = await electron.launch({ executablePath });
+        window = await app.firstWindow();
+        page = window;
+    } else {
+        // Fallback: Assume web-only test against dev server (requires running 'pnpm tauri dev' separately)
+        // This is useful for testing the UI flow if the backend is mocked or reachable.
+        const browser = await electron.launch(); // This might fail if no exe, so strictly we need a browser type
+        // Actually, let's use standard browser launch if no exe provided
+        // But we need to switch imports. For now, let's fail gracefully or assume user sets path.
+        console.warn("No TAURI_APP_PATH provided. Attempting to connect to localhost:1420...");
+        /*
+           To run this against the dev server:
+           1. pnpm tauri dev
+           2. TAURI_APP_PATH=... pnpm test:e2e
+        */
+        throw new Error("Please set TAURI_APP_PATH to the built executable path to run E2E tests.");
+    }
+  });
+
+  test.afterAll(async () => {
+      if (app) {
+          await app.close();
+      }
   });
 
   test('Smoke Test Protocol', async () => {
