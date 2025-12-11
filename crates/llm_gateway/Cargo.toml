@@ -4,18 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-specta = { version = "=2.0.0-rc.22", features = ["serde"] }
-tauri-specta = { version = "=2.0.0-rc.21", features = [] }
-tauri = { version = "^2.0.0", features = ["specta"] }
-thiserror = "1"
-quick-xml = { version = "0.31", features = ["serialize"] }
-futures = "0.3.31"
-tokio = { version = "1", features = ["time"] }
-async-stream = "0.3.6"
-
-[dev-dependencies]
-mockito = "1.4"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+async-stream = "0.3"
+# specta removed
+tauri = { version = "^2.0.0", features = [] }

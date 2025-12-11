@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 use grep_regex::RegexMatcher;
@@ -14,10 +13,10 @@ pub mod tools;
 
 pub use common::WorkspaceState;
 
-#[derive(Error, Debug, Serialize, Type)]
+#[derive(Error, Debug)]
 pub enum FsError {
     #[error("IO Error: {0}")]
-    Io(String),
+    Io(std::io::Error),
     #[error("Security Violation: Path traversal detected")]
     SecurityViolation,
     #[error("Invalid Path")]
@@ -28,21 +27,23 @@ pub enum FsError {
 
 impl From<std::io::Error> for FsError {
     fn from(e: std::io::Error) -> Self {
-        FsError::Io(e.to_string())
+        FsError::Io(e)
     }
 }
 
-#[derive(Type, Serialize, Deserialize, Debug, Clone)]
+// Logic Struct
+#[derive(Debug, Clone)]
 pub struct FileEntry {
-    pub path: String,
+    pub path: PathBuf,
     pub name: String,
     pub is_dir: bool,
     pub children: Option<Vec<FileEntry>>,
 }
 
-#[derive(Type, Serialize, Deserialize, Debug, Clone)]
+// Logic Struct
+#[derive(Debug, Clone)]
 pub struct FileContent {
-    pub path: String,
+    pub path: PathBuf,
     pub content: String,
 }
 
@@ -57,8 +58,8 @@ fn validate_path(base: &Path, user_path: &str, require_exists: bool) -> Result<P
     let full_path = base.join(user_path);
 
     if require_exists {
-        let canonical_path = full_path.canonicalize().map_err(|e| FsError::Io(e.to_string()))?;
-        let canonical_base = base.canonicalize().map_err(|e| FsError::Io(e.to_string()))?;
+        let canonical_path = full_path.canonicalize().map_err(FsError::Io)?;
+        let canonical_base = base.canonicalize().map_err(FsError::Io)?;
 
         if !canonical_path.starts_with(&canonical_base) {
              return Err(FsError::SecurityViolation);
@@ -67,8 +68,8 @@ fn validate_path(base: &Path, user_path: &str, require_exists: bool) -> Result<P
     } else {
         if let Some(parent) = full_path.parent() {
             if parent.exists() {
-                 let canonical_parent = parent.canonicalize().map_err(|e| FsError::Io(e.to_string()))?;
-                 let canonical_base = base.canonicalize().map_err(|e| FsError::Io(e.to_string()))?;
+                 let canonical_parent = parent.canonicalize().map_err(FsError::Io)?;
+                 let canonical_base = base.canonicalize().map_err(FsError::Io)?;
                  if !canonical_parent.starts_with(&canonical_base) {
                       return Err(FsError::SecurityViolation);
                  }
@@ -80,10 +81,10 @@ fn validate_path(base: &Path, user_path: &str, require_exists: bool) -> Result<P
 
 pub fn build_file_tree(root: &Path, current_dir: &Path) -> Result<Vec<FileEntry>, FsError> {
     let mut entries = Vec::new();
-    let read_dir = std::fs::read_dir(current_dir).map_err(|e| FsError::Io(e.to_string()))?;
+    let read_dir = std::fs::read_dir(current_dir).map_err(FsError::Io)?;
 
     for entry in read_dir {
-        let entry = entry.map_err(|e| FsError::Io(e.to_string()))?;
+        let entry = entry.map_err(FsError::Io)?;
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
 
@@ -93,8 +94,7 @@ pub fn build_file_tree(root: &Path, current_dir: &Path) -> Result<Vec<FileEntry>
 
         let relative_path = path.strip_prefix(root)
             .map_err(|_| FsError::InvalidPath)?
-            .to_string_lossy()
-            .to_string();
+            .to_path_buf();
 
         let is_dir = path.is_dir();
         let mut children = None;
@@ -122,7 +122,7 @@ pub fn build_file_tree(root: &Path, current_dir: &Path) -> Result<Vec<FileEntry>
 }
 
 pub fn search_code_internal(root: &Path, query: &str) -> Result<Vec<String>, FsError> {
-    let matcher = RegexMatcher::new(query).map_err(|e| FsError::Io(format!("Regex error: {}", e)))?;
+    let matcher = RegexMatcher::new(query).map_err(|e| FsError::Io(std::io::Error::new(std::io::ErrorKind::Other, format!("Regex error: {}", e))))?;
     let mut matches = Vec::new();
     let matches_mutex = std::sync::Mutex::new(&mut matches);
 
@@ -173,9 +173,9 @@ fn validate_syntax(path: &str, content: &str) -> Result<(), String> {
 
 pub fn read_file_internal(root: &Path, file_path: String) -> Result<FileContent, FsError> {
     let full_path = validate_path(root, &file_path, true)?;
-    let content = std::fs::read_to_string(&full_path).map_err(|e| FsError::Io(e.to_string()))?;
+    let content = std::fs::read_to_string(&full_path).map_err(FsError::Io)?;
     Ok(FileContent {
-        path: file_path,
+        path: PathBuf::from(file_path),
         content
     })
 }
@@ -189,64 +189,25 @@ pub fn write_file_internal(root: &Path, file_path: String, content: String) -> R
     }
 
     if let Some(parent) = full_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| FsError::Io(e.to_string()))?;
+        std::fs::create_dir_all(parent).map_err(FsError::Io)?;
     }
 
-    std::fs::write(&full_path, content.clone()).map_err(|e| FsError::Io(e.to_string()))?;
+    std::fs::write(&full_path, content.clone()).map_err(FsError::Io)?;
 
     Ok(FileContent {
-        path: file_path,
+        path: PathBuf::from(file_path),
         content
     })
 }
 
-pub mod commands {
-    use super::*;
-    use tauri::State;
+// Commands module removed or deprecated.
+// Logic functions above are now the public API.
+// We can remove the `commands` module completely as its logic is trival wrapping.
+// The `read_skeleton` logic needs to be exposed though.
 
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn list_files(state: State<'_, WorkspaceState>, dir_path: Option<String>) -> Result<Vec<FileEntry>, FsError> {
-        let root = state.0.lock().map_err(|_| FsError::Io("Lock poison".into()))?.clone();
-        let start_dir = if let Some(sub) = dir_path {
-             validate_path(&root, &sub, true)?
-        } else {
-             root.clone()
-        };
-        build_file_tree(&root, &start_dir)
-    }
-
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn read_file(state: State<'_, WorkspaceState>, file_path: String) -> Result<FileContent, FsError> {
-        let root = state.0.lock().map_err(|_| FsError::Io("Lock poison".into()))?.clone();
-        read_file_internal(&root, file_path)
-    }
-
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn write_file(state: State<'_, WorkspaceState>, file_path: String, content: String) -> Result<FileContent, FsError> {
-         let root = state.0.lock().map_err(|_| FsError::Io("Lock poison".into()))?.clone();
-         write_file_internal(&root, file_path, content)
-    }
-
-    // NOTE: search_code not yet exposed to frontend via Tauri command in existing code,
-    // but the Agent might use it via agent_core.
-    // If frontend needs it, we can add it here.
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn search_code(state: State<'_, WorkspaceState>, query: String) -> Result<Vec<String>, FsError> {
-         let root = state.0.lock().map_err(|_| FsError::Io("Lock poison".into()))?.clone();
-         search_code_internal(&root, &query)
-    }
-
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn read_skeleton(state: State<'_, WorkspaceState>, file_path: String) -> Result<String, FsError> {
-        let root = state.0.lock().map_err(|_| FsError::Io("Lock poison".into()))?.clone();
-        let fc = read_file_internal(&root, file_path.clone())?;
-        get_skeleton(Path::new(&file_path), &fc.content).map_err(|e| FsError::Io(e))
-    }
+pub fn read_skeleton_internal(root: &Path, file_path: String) -> Result<String, FsError> {
+    let fc = read_file_internal(root, file_path.clone())?;
+    get_skeleton(Path::new(&file_path), &fc.content).map_err(|e| FsError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))
 }
 
 #[cfg(test)]

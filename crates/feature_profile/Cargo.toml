@@ -5,6 +5,6 @@ edition = "2021"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
-specta = { version = "=2.0.0-rc.22", features = ["serde"] }
-tauri = { version = "^2.0.0", features = ["specta"] }
+# specta removed
+tauri = { version = "^2.0.0", features = [] }
 shared_db = { path = "../shared_db" }

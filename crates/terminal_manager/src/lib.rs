@@ -1,6 +1,5 @@
 pub use portable_pty::{CommandBuilder, NativePtySystem, PtySystem, PtySize};
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use std::io::{Read};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -14,14 +13,14 @@ pub use common; // Re-export common to make it accessible
 
 pub mod tools;
 
-#[derive(Type, Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CommandOutput {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: i32,
 }
 
-#[derive(Error, Debug, Serialize, Type)]
+#[derive(Error, Debug)]
 pub enum ShellError {
     #[error("IO Error: {0}")]
     Io(String),
@@ -110,32 +109,23 @@ pub fn kill_session(state: &Arc<TerminalState>, session_id: &str) -> Result<(), 
     }
 }
 
-pub mod commands {
-    use super::*;
-    use tauri::State;
+pub fn run_command_internal(root: &PathBuf, program: String, args: Vec<String>) -> Result<CommandOutput, ShellError> {
+     // One-off PTY
+    let pty_system = NativePtySystem::default();
+    let pair = pty_system.openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 }).map_err(|e| ShellError::Pty(e.to_string()))?;
+    let mut cmd = CommandBuilder::new(&program);
+    cmd.args(&args);
+    cmd.cwd(root);
+    let mut child = pair.slave.spawn_command(cmd).map_err(|e| ShellError::Pty(e.to_string()))?;
+    drop(pair.slave);
+    let mut reader = pair.master.try_clone_reader().map_err(|e| ShellError::Pty(e.to_string()))?;
+    let mut output = String::new();
+    reader.read_to_string(&mut output).unwrap_or(0); // ignore err
+    let exit = child.wait().map_err(|e| ShellError::Pty(e.to_string()))?;
 
-    #[tauri::command]
-    #[specta::specta]
-    pub async fn run_command(state: State<'_, WorkspaceState>, program: String, args: Vec<String>) -> Result<CommandOutput, ShellError> {
-        let root = state.0.lock().map_err(|_| ShellError::Io("Lock poison".into()))?.clone();
-
-        // One-off PTY
-        let pty_system = NativePtySystem::default();
-        let pair = pty_system.openpty(PtySize { rows: 24, cols: 80, pixel_width: 0, pixel_height: 0 }).map_err(|e| ShellError::Pty(e.to_string()))?;
-        let mut cmd = CommandBuilder::new(&program);
-        cmd.args(&args);
-        cmd.cwd(root);
-        let mut child = pair.slave.spawn_command(cmd).map_err(|e| ShellError::Pty(e.to_string()))?;
-        drop(pair.slave);
-        let mut reader = pair.master.try_clone_reader().map_err(|e| ShellError::Pty(e.to_string()))?;
-        let mut output = String::new();
-        reader.read_to_string(&mut output).unwrap_or(0); // ignore err
-        let exit = child.wait().map_err(|e| ShellError::Pty(e.to_string()))?;
-
-        Ok(CommandOutput {
-            stdout: output,
-            stderr: "".into(),
-            exit_code: if exit.success() { 0 } else { 1 }
-        })
-    }
+    Ok(CommandOutput {
+        stdout: output,
+        stderr: "".into(),
+        exit_code: if exit.success() { 0 } else { 1 }
+    })
 }

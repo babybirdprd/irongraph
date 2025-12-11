@@ -35,3 +35,5 @@ tauri-plugin-sql = { version = "2.3.1", features = ["sqlite"] }
 sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-native-tls"] }
 anyhow = "1.0.100"
 async-trait = "0.1.89"
+irongraph_protocol = { version = "0.1.0", path = "../../../crates/irongraph_protocol" }
+shared_db = { version = "0.1.0", path = "../../../crates/shared_db" }
