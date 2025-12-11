@@ -7,9 +7,9 @@ edition = "2021"
 walkdir = "2"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
-specta = { version = "=2.0.0-rc.22", features = ["serde"] }
-tauri-specta = { version = "=2.0.0-rc.21", features = [] }
-tauri = { version = "^2.0.0", features = ["specta"] }
+# specta removed
+# tauri-specta removed
+tauri = { version = "^2.0.0", features = [] } # Removed specta feature
 common = { path = "../common" }
 grep-regex = "0.1.14"
 grep-searcher = "0.1.16"
